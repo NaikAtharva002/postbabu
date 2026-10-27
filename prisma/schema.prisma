@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  AGENCY_ADMIN
+  AGENCY_MEMBER
+  CLIENT_VIEWER
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  REVISION_REQUESTED
+  APPROVED
+  QUEUED
+  DISPATCHING
+  PUBLISHED
+  FAILED
+}
+
+enum PlatformType {
+  INSTAGRAM
+  FACEBOOK_PAGE
+  LINKEDIN
+  TWITTER_X
+  YOUTUBE_SHORTS
+}
+
+model Agency {
+  id               String            @id @default(uuid())
+  name             String
+  slug             String            @unique
+  razorpaySubId    String?
+  planTier         String            @default("STARTER") // ₹499, ₹1299, ₹2499
+  users            User[]
+  clientWorkspaces ClientWorkspace[]
+  createdAt        DateTime          @default(now())
+
+  @@index([slug])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  agencyId  String
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  role      Role     @default(AGENCY_MEMBER)
+  createdAt DateTime @default(now())
+
+  @@index([agencyId])
+}
+
+model ClientWorkspace {
+  id             String          @id @default(uuid())
+  name           String          // e.g. "Ramesh Jewellers"
+  clientPhone    String?         // WhatsApp phone for approval alerts
+  clientEmail    String?
+  agencyId       String
+  agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  socialAccounts SocialAccount[]
+  posts          Post[]
+  approvalTokens ApprovalToken[]
+  createdAt      DateTime        @default(now())
+
+  @@index([agencyId])
+}
+
+model SocialAccount {
+  id             String          @id @default(uuid())
+  platform       PlatformType
+  accountName    String
+  platformId     String          // Platform specific ID (e.g. IG Business ID)
+  accessToken    String          // Encrypted token
+  refreshToken   String?         // Encrypted token
+  tokenExpiresAt DateTime?
+  workspaceId    String
+  workspace      ClientWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  posts          PostChannel[]
+  createdAt      DateTime        @default(now())
+
+  @@index([workspaceId])
+}
+
+model Post {
+  id               String            @id @default(uuid())
+  workspaceId      String
+  workspace        ClientWorkspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  content          String            // Primary caption
+  mediaUrls        String[]          // S3 / R2 asset URLs
+  status           PostStatus        @default(DRAFT)
+  scheduledFor     DateTime
+  channels         PostChannel[]
+  approvalRequests ApprovalRequest[]
+  revisionNotes    String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([workspaceId])
+  @@index([status, scheduledFor])
+}
+
+model PostChannel {
+  id              String        @id @default(uuid())
+  postId          String
+  post            Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  customCaption   String?
+  platformPostId  String?
+  errorDetails    String?
+
+  @@index([postId])
+  @@index([socialAccountId])
+}
+
+model ApprovalToken {
+  id          String          @id @default(uuid())
+  token       String          @unique @default(cuid()) // Secret magic link token
+  workspaceId String
+  workspace   ClientWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime        @default(now())
+
+  @@index([workspaceId])
+  @@index([token])
+}
+
+model ApprovalRequest {
+  id         String     @id @default(uuid())
+  postId     String
+  post       Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  status     PostStatus @default(PENDING_APPROVAL)
+  clientNote String?
+  reviewedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([postId])
+}
+
+model IndianFestivalEvent {
+  id              String   @id @default(uuid())
+  title           String   // e.g. "Diwali (Deepavali)"
+  date            DateTime
+  category        String   // "Festival", "National", "Shopping", "Cultural"
+  description     String?
+  suggestedPrompt String
+
+  @@index([date])
+}
